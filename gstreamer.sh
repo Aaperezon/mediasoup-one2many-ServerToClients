@@ -6,7 +6,7 @@ function show_usage()
 	echo "USAGE"
 	echo "-----"
 	echo
-	echo "  SERVER_URL=https://my.mediasoup-demo.org:4443 MEDIA_FILE=./test.mp4 ./ffmpeg.sh"
+	echo "  SERVER_URL=https://my.mediasoup-demo.org:4443 MEDIA_FILE=./test.mp4 ./gstreamer.sh"
 	echo
 	echo "  where:"
 	echo "  - SERVER_URL is the URL of the mediasoup-demo API server"
@@ -15,7 +15,7 @@ function show_usage()
 	echo "REQUIREMENTS"
 	echo "------------"
 	echo
-	echo "  - ffmpeg: stream audio and video (https://www.ffmpeg.org)"
+	echo "  - gstreamer: stream audio and video (https://gstreamer.freedesktop.org)"
 	echo "  - httpie: command line HTTP client (https://httpie.org)"
 	echo "  - jq: command-line JSON processor (https://stedolan.github.io/jq)"
 	echo
@@ -35,8 +35,8 @@ if [ -z "${MEDIA_FILE}" ] ; then
 	exit 1
 fi
 
-if [ "$(command -v ffmpeg)" == "" ] ; then
-	>&2 echo "ERROR: ffmpeg command not found, must install FFmpeg"
+if [ "$(command -v gst-launch-1.0)" == "" ] ; then
+	>&2 echo "ERROR: gst-launch-1.0 command not found, must install GStreamer"
 	show_usage
 	exit 1
 fi
@@ -81,6 +81,7 @@ res=$(${HTTPIE_COMMAND} \
 eval "$(echo ${res} | jq -r '@sh "videoTransportId=\(.id) videoTransportIp=\(.ip) videoTransportPort=\(.port) videoTransportRtcpPort=\(.rtcpPort)"')"
 
 
+
 #
 # Create a mediasoup Producer to send video by sending our RTP parameters via a
 # HTTP POST.
@@ -94,24 +95,24 @@ ${HTTPIE_COMMAND} -v \
 	> /dev/null
 
 #
-# Run ffmpeg command and make it send audio and video RTP with codec payload and
+# Run gstreamer command and make it send audio and video RTP with codec payload and
 # SSRC values matching those that we have previously signaled in the Producers
-# creation above. Also, tell ffmpeg to send the RTP to the mediasoup
+# creation above. Also, tell gstreamer to send the RTP to the mediasoup
 # PlainTransports' ip and port.
 #
-echo ">>> running ffmpeg..."
+echo ">>> running gstreamer..."
 
-#
-# NOTES:
-# - We can add ?pkt_size=1200 to each rtp:// URI to limit the max packet size
-#   to 1200 bytes.
-#
-ffmpeg \
-	-re \
-	-v info \
-	-stream_loop -1 \
-	-i ${MEDIA_FILE} \
-	-map 0:v:0 \
-	-pix_fmt yuv420p -c:v libvpx -b:v 1000k -deadline realtime -cpu-used 4 \
-	-f tee \
-	"[select=v:f=rtp:ssrc=${VIDEO_SSRC}:payload_type=${VIDEO_PT}]rtp://${videoTransportIp}:${videoTransportPort}?rtcpport=${videoTransportRtcpPort}"
+gst-launch-1.0 \
+	rtpbin name=rtpbin \
+	filesrc location=${MEDIA_FILE} \
+	! qtdemux name=demux \
+	demux.video_0 \
+	! queue \
+	! decodebin \
+	! videoconvert \
+	! vp8enc target-bitrate=1000000 deadline=1 cpu-used=4 \
+	! rtpvp8pay pt=${VIDEO_PT} ssrc=${VIDEO_SSRC} picture-id-mode=2 \
+	! rtpbin.send_rtp_sink_0 \
+	rtpbin.send_rtp_src_0 ! udpsink host=${videoTransportIp} port=${videoTransportPort} \
+	rtpbin.send_rtcp_src_0 ! udpsink host=${videoTransportIp} port=${videoTransportRtcpPort} sync=false async=false
+	
