@@ -76,9 +76,9 @@ window.addEventListener("load", (event) => {
 
   }
   const refreshImage = async () => {
-    socket.emit('refreshImage', (change_image) => {
+    socket.emit('refreshImage', (new_image) => {
       const context = canvasElt.getContext('2d');
-      base_image.src = change_image;
+      base_image.src = new_image;
     
     })
   }

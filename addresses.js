@@ -1,6 +1,6 @@
 module.exports={
     SERVERIP: ()=>{
-            return "0.0.0.0";
+            return "192.168.176.76";
     },
     SERVERPORT: ()=>{
             return 5000;

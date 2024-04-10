@@ -18,6 +18,16 @@ app.use(cors())
 app.use(cors({
     origin: '*'
 }));
+// var Turn = require('node-turn');
+// var server = new Turn({
+//   // set options
+//   authMech: 'none',
+//   listeningIps: ['0.0.0.0'],
+//   minPort: 2000,
+//   maxPort: 2020,
+// });
+// server.start();
+
 
 const SERVERIP = require('./addresses.js').SERVERIP();
 const STREAMPORT = require('./addresses.js').STREAMPORT();
@@ -140,15 +150,6 @@ const transportProduce = async ({ kind, rtpParameters }, callback) => {
   })
   // console.log("producer")
   // console.log(JSON.stringify(producer))
-  // console.log(producer.id)
-  // console.log(producer.closed)
-  // console.log(producer.kind)
-  // console.log(producer.rtpParameters)
-  // console.log(producer.type)
-  // console.log(producer.paused)
-  // console.log(producer.score)
-  // console.log(producer.appData)
-  // console.log(producer.observer)
 
   console.log('Producer ID: ', producer.id, producer.kind)
 
@@ -193,11 +194,7 @@ peers.on('connection', async socket => {
   })
 
 
-
-
-
   socket.on('refreshImage', refreshImage)
-
 
   socket.on('generate_artificial', (callback)=>{
     createProducer();
@@ -205,15 +202,7 @@ peers.on('connection', async socket => {
   })
 
 
-
-
-
-
-
   socket.on('createRoom', createRoom)
-
-
-
   // Client emits a request to create server side Transport
   // We need to differentiate between the producer and consumer transports
   socket.on('createWebRtcTransport', createWebRtcTransport)
@@ -221,8 +210,6 @@ peers.on('connection', async socket => {
   socket.on('transport-connect', transportConnect)
   // see client's socket.emit('transport-produce', ...)
   socket.on('transport-produce', transportProduce)
-
-
 
 
 
@@ -273,11 +260,6 @@ peers.on('connection', async socket => {
     await consumer.resume()
   })
 })
-
-
-
-
-
 
 
 
@@ -333,7 +315,7 @@ const create_worker = new Promise((resolve)=>{
 })
 create_worker.then(async(the_worker)=>{
   worker = the_worker;
-  // await createProducer();
+  await createProducer();
 })
 
 
@@ -367,14 +349,94 @@ create_worker.then(async(the_worker)=>{
 
 
 
-const {  RTCVideoSource, i420ToRgba, rgbaToI420 } = require('wrtc').nonstandard;
-const { createCanvas, createImageData } = require('canvas');
+
+
+
+
+
+const config = require('./config');
+let ffmpeg_transport;
+
+app.post('/broadcasters/transports', async(req, res, next) => {
+
+  await createRoom(({rtpCapabilities})=>{
+    console.log("rtpCapabilities")
+    console.log(rtpCapabilities)
+    producerRtpCapabilities = rtpCapabilities
+  });
+
+  const {
+    comedia,
+    rtcpMux,
+  } = req.body;
+
+  const plainTransportOptions =
+  {
+    ...config.plainTransportOptions,
+    rtcpMux : rtcpMux,
+    comedia : comedia
+  };
+
+  ffmpeg_transport = await router.createPlainTransport(plainTransportOptions);
+  console.log("FFMPEG transport created");
+  data = {
+    id       : ffmpeg_transport.id,
+    ip       : ffmpeg_transport.tuple.localIp,
+    port     : ffmpeg_transport.tuple.localPort,
+    rtcpPort : ffmpeg_transport.rtcpTuple ? ffmpeg_transport.rtcpTuple.localPort : undefined
+  }
+  console.log(JSON.stringify(data))
+  res.status(200).json(data);
+})
+
+app.post('/broadcasters/transports/produce', async(req, res, next) => {
+  const {
+    kind,
+    rtpParameters
+  } = req.body;
+
+  producer = await ffmpeg_transport.produce({ kind, rtpParameters })
+  data = { id: producer.id };
+  console.log(JSON.stringify(data))
+  res.status(200).json(data);
+})
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const {  RTCVideoSource, rgbaToI420 } = require('wrtc').nonstandard;
+const { createCanvas } = require('canvas');
 
 
 const source = new RTCVideoSource();
 const track = source.createTrack();
-// ADD TRACK TO PARAMS
-
 
 const width = 640;
 const height = 480;
@@ -417,29 +479,6 @@ const artificialImage = async () => {
   });
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 let producerRtpCapabilities;
 let params = {};
 async function  createProducer(){
@@ -454,71 +493,35 @@ async function  createProducer(){
     console.log(rtpCapabilities)
     producerRtpCapabilities = rtpCapabilities
   });
-  
-  let artificial_transportConnect = await createWebRtcTransport( {sender:true}, async ( {params} )=>{
-    producerRtpCapabilities = {
-      ...producerRtpCapabilities,
-      ...params,
-    };
-  } );
-  console.log("producerRtpCapabilities")
-  console.log(producerRtpCapabilities.dtlsParameters)
-
-  await artificial_transportConnect.connect( {dtlsParameters: {...producerRtpCapabilities.dtlsParameters} } )
-
-
-  params = {
-    ...mediaCodecs[0],
-    rtpParameters : {
-      codecs : [ 
-        { mimeType  : "video/VP8", payloadType : 101, clockRate   : 90000, },
-      ],
-      encodings : [ { rid: "r0", active: true, maxBitrate: 100000 }, { rid: "r1", active: true, maxBitrate: 300000 }, { rid: "r2", active: true, maxBitrate: 900000 } ],
-    },
-  }
-  console.log(params)
-
-  
-  await transportProduce({
-    kind: params.kind,
-    rtpParameters: params.rtpParameters,
-  }, ({ id }) => {
-    // callback({ id })
-  })
-
-  artificial_transportConnect.produce(
-    {
-    ...mediaCodecs[0],
-    rtpParameters : {
-      codecs : [ 
-        { mimeType  : "video/VP8", payloadType : 101, clockRate   : 90000, },
-      ],
-      encodings : [ { rid: "r0", active: true, maxBitrate: 100000 }, { rid: "r1", active: true, maxBitrate: 300000 }, { rid: "r2", active: true, maxBitrate: 900000 } ],
-      mid:0
-    },
-    track
+  // ===========================================================================================================
+  const plainTransportOptions =
+  {
+    ...config.plainTransportOptions,
+    rtcpMux : false,
+    comedia : true
+  };
+  let artificial_transport = await router.createPlainTransport(plainTransportOptions);
+  console.log("Artificial transport created");
+	let kind = "video";
+	let rtpParameters = { 
+    codecs: [ 
+      { mimeType:"video/vp8", payloadType:101, clockRate:90000 },
+    ], 
+    encodings: [
+      { ssrc:2222 },
+    ] 
+  } 
+  // ===========================================================================================================
+  producer = await artificial_transport.produce(
+    { 
+      kind, 
+      rtpParameters, 
+      track, 
     }
-  );
-  // router.createPlainTransport({
-  //   comedia: true,
-	//   rtcpMux: false,
-  // })
+  )
+  console.log(`Producer id: ${producer.id}`)
+
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
