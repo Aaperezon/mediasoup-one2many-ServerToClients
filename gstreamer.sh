@@ -102,15 +102,27 @@ ${HTTPIE_COMMAND} -v \
 #
 echo ">>> running gstreamer..."
 
+
 gst-launch-1.0 \
-	rtpbin name=rtpbin \
 	filesrc location=${MEDIA_FILE} \
 	! queue \
 	! decodebin \
 	! videoconvert \
 	! vp8enc target-bitrate=1000000 deadline=1 cpu-used=4 \
 	! rtpvp8pay pt=${VIDEO_PT} ssrc=${VIDEO_SSRC} picture-id-mode=2 \
-	! rtpbin.send_rtp_sink_0 \
-	rtpbin.send_rtp_src_0 ! udpsink host=${videoTransportIp} port=${videoTransportPort} \
-	rtpbin.send_rtcp_src_0 ! udpsink host=${videoTransportIp} port=${videoTransportRtcpPort} sync=false async=false
+	! udpsink host=${videoTransportIp} port=${videoTransportPort}
+	
+
+
+# gst-launch-1.0 \
+# 	rtpbin name=rtpbin \
+# 	filesrc location=${MEDIA_FILE} \
+# 	! queue \
+# 	! decodebin \
+# 	! videoconvert \
+# 	! vp8enc target-bitrate=1000000 deadline=1 cpu-used=4 \
+# 	! rtpvp8pay pt=${VIDEO_PT} ssrc=${VIDEO_SSRC} picture-id-mode=2 \
+# 	! rtpbin.send_rtp_sink_0 \
+# 	rtpbin.send_rtp_src_0 ! udpsink host=${videoTransportIp} port=${videoTransportPort} \
+# 	rtpbin.send_rtcp_src_0 ! udpsink host=${videoTransportIp} port=${videoTransportRtcpPort} sync=false async=false
 	
