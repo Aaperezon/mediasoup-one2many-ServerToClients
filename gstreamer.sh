@@ -105,8 +105,6 @@ echo ">>> running gstreamer..."
 gst-launch-1.0 \
 	rtpbin name=rtpbin \
 	filesrc location=${MEDIA_FILE} \
-	! qtdemux name=demux \
-	demux.video_0 \
 	! queue \
 	! decodebin \
 	! videoconvert \
